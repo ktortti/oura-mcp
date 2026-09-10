@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, symlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveExportDir, writeCsvs } from "../src/export.js";
@@ -25,10 +25,21 @@ test("traversal and absolute paths outside home are rejected", () => {
   assert.throws(() => resolveExportDir("/tmp/anywhere", h), /inside your home directory/);
 });
 
-test("a symlink inside home that points outside is rejected", () => {
+test("a symlink inside home that points outside is rejected before anything is created", () => {
   const h = home(), outside = mkdtempSync(join(tmpdir(), "oura-outside-"));
   symlinkSync(outside, join(h, "link"));
-  assert.throws(() => resolveExportDir(join(h, "link", "x"), h), /resolves outside/);
+  assert.throws(() => resolveExportDir(join(h, "link", "x", "y"), h), /resolves outside/);
+  assert.deepEqual(readdirSync(outside), [], "nothing was created through the symlink");
+});
+
+test("an output file that is a symlink to outside home is refused, not written through", () => {
+  const h = home(), outside = mkdtempSync(join(tmpdir(), "oura-outside-"));
+  const victim = join(outside, "victim.txt");
+  writeFileSync(victim, "original");
+  mkdirSync(join(h, "out"));
+  symlinkSync(victim, join(h, "out", "daily.csv"));
+  assert.throws(() => writeCsvs(join(h, "out"), { daily: [{ day: "2026-03-01" }] }, h), /Refusing to write through a symlink/);
+  assert.equal(readFileSync(victim, "utf8"), "original");
 });
 
 test("writeCsvs writes one file per table with a header row", () => {
