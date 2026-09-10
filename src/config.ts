@@ -7,8 +7,13 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 const TOKEN_FILE = join(CONFIG_DIR, "tokens.json");
 
 export const DEFAULT_SCOPES = "daily heartrate tag spo2 stress";
-/** Oura's app form accepts `localhost` but not an IP literal, and requires https. */
-export const DEFAULT_REDIRECT = "https://localhost:3000/callback";
+/**
+ * Oura's app form requires https and rejects IP literals; its identity server's firewall then
+ * blocks any redirect containing "https://localhost". A subdomain of .localhost passes the
+ * firewall and resolves to loopback on macOS, Linux (systemd-resolved) and modern browsers
+ * without a hosts entry (RFC 6761).
+ */
+export const DEFAULT_REDIRECT = "https://oura.localhost:3000/callback";
 
 export interface AppConfig {
   client_id: string;
@@ -92,10 +97,4 @@ export function statusForCaller(): { dir: string; config: FileStatus; tokens: Fi
   return { dir: tildeify(CONFIG_DIR), config: fileStatus(CONFIG_FILE), tokens: fileStatus(TOKEN_FILE) };
 }
 
-export const paths = {
-  CONFIG_FILE,
-  TOKEN_FILE,
-  LOCK_FILE: `${TOKEN_FILE}.lock`,
-  CERT_FILE: join(CONFIG_DIR, "callback-cert.pem"),
-  KEY_FILE: join(CONFIG_DIR, "callback-key.pem"),
-};
+export const paths = { CONFIG_FILE, TOKEN_FILE, LOCK_FILE: `${TOKEN_FILE}.lock` };

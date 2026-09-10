@@ -2,7 +2,7 @@
 
 A small, read-only MCP server for the Oura API v2. It returns pre-shaped physiology — nights, chronotype, temperature shifts, baseline drift — and leaves interpretation to whatever is calling it.
 
-- OAuth2 authorization-code flow with PKCE and a state check; local callback on `localhost` (both loopback addresses).
+- OAuth2 authorization-code flow with PKCE and a state check; local callback on a `*.localhost` name (both loopback addresses).
 - Client secret and tokens live in `~/.oura-mcp-local/` with `0600` permissions. Tokens are never printed.
 - `api.ouraring.com` and `cloud.ouraring.com` are the only hosts in the code.
 - Scopes requested: `daily heartrate tag spo2 stress` (stress is its own scope on the app form and gates `daily_stress`). No `personal`, no `email`, no workouts.
@@ -26,14 +26,15 @@ A small, read-only MCP server for the Oura API v2. It returns pre-shaped physiol
 ## Setup
 
 1. Register an application at <https://cloud.ouraring.com/oauth/applications>.
-   Redirect URI: `https://localhost:3000/callback` — Oura's form requires https and rejects IP literals such as `127.0.0.1`.
+   Redirect URI: `https://oura.localhost:3000/callback`.
+   Why that name: Oura's form requires https and rejects IP literals, and its identity server's firewall then blocks any redirect containing `https://localhost` ("Request blocked"). A subdomain of `.localhost` passes the firewall and resolves to loopback on macOS, systemd-resolved Linux and modern browsers without a hosts entry. Any `*.localhost` name works; the server always binds loopback only.
 2. Build and configure:
    ```bash
    git clone https://github.com/ktortti/oura-mcp.git && cd oura-mcp
    npm ci && npm run build
    node dist/index.js init      # asks for client ID and secret (secret hidden); writes ~/.oura-mcp-local/config.json
    node dist/index.js auth      # opens the Oura consent page; tokens saved to ~/.oura-mcp-local/tokens.json
-   # Oura requires an https redirect. The callback runs on a self-signed cert for localhost (generated once with
+   # Oura requires an https redirect. The callback runs on a self-signed cert for the redirect hostname (generated once with
    # openssl into ~/.oura-mcp-local/). If the browser warns, choose Advanced → Proceed. If it refuses outright,
    # copy the full URL from the address bar (it contains code=...) and paste it into the terminal.
    node dist/index.js status

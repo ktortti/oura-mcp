@@ -5,7 +5,8 @@ import { execFileSync, spawn } from "node:child_process";
 import { chmodSync, existsSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { Writable } from "node:stream";
-import { AppConfig, CONFIG_DIR, DEFAULT_REDIRECT, DEFAULT_SCOPES, loadConfig, paths, saveConfig, saveTokens } from "./config.js";
+import { join } from "node:path";
+import { AppConfig, CONFIG_DIR, DEFAULT_REDIRECT, DEFAULT_SCOPES, loadConfig, saveConfig, saveTokens } from "./config.js";
 import { exchangeToken } from "./token.js";
 
 export const AUTHORIZE_URL = "https://cloud.ouraring.com/oauth/authorize";
@@ -82,17 +83,20 @@ export async function runAuth(): Promise<void> {
   console.log(`Connected. Tokens saved to ${file} (0600). Scope: ${tokens.scope ?? cfg.scopes}. Expires: ${tokens.expires_at}`);
 }
 
-interface LoopbackRedirect { tls: boolean; port: number; path: string; hosts: string[] }
+export interface LoopbackRedirect { tls: boolean; port: number; path: string; hostname: string; bind: string[] }
 
-function parseLoopbackRedirect(uri: string): LoopbackRedirect {
+/** Accepts localhost, any *.localhost name, or a loopback IP literal. Always binds loopback only. */
+export function parseLoopbackRedirect(uri: string): LoopbackRedirect {
   const u = new URL(uri);
-  const loopback = ["127.0.0.1", "localhost"].includes(u.hostname);
-  if (!["http:", "https:"].includes(u.protocol) || !loopback || !u.port) {
-    throw new Error("redirect_uri must be http(s)://localhost:<port>/<path> (or 127.0.0.1)");
+  const h = u.hostname;
+  const isName = h === "localhost" || h.endsWith(".localhost");
+  const isIp = h === "127.0.0.1" || h === "[::1]" || h === "::1";
+  if (!["http:", "https:"].includes(u.protocol) || !(isName || isIp) || !u.port) {
+    throw new Error("redirect_uri must be http(s)://<name>.localhost:<port>/<path> (or localhost / 127.0.0.1)");
   }
-  // A browser resolving `localhost` may try ::1 before 127.0.0.1, so listen on both.
-  const hosts = u.hostname === "localhost" ? ["127.0.0.1", "::1"] : [u.hostname];
-  return { tls: u.protocol === "https:", port: Number(u.port), path: u.pathname || "/callback", hosts };
+  // A browser resolving a .localhost name may try ::1 before 127.0.0.1, so listen on both.
+  const bind = isName ? ["127.0.0.1", "::1"] : [h.replace(/^\[(.*)\]$/, "$1")];
+  return { tls: u.protocol === "https:", port: Number(u.port), path: u.pathname || "/callback", hostname: h, bind };
 }
 
 /**
@@ -103,7 +107,7 @@ function parseLoopbackRedirect(uri: string): LoopbackRedirect {
  */
 function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, authUrl: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const tls = redirect.tls ? selfSignedCert() : null;
+    const tls = redirect.tls ? selfSignedCert(redirect.hostname) : null;
     const rl = createInterface({ input: process.stdin, terminal: false });
 
     const settle = (outcome: { code: string } | { error: Error }) => {
@@ -129,7 +133,7 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
       settle({ code });
     };
 
-    const servers = redirect.hosts.map(() => (tls ? createHttpsServer(tls, handler) : createHttpServer(handler)));
+    const servers = redirect.bind.map(() => (tls ? createHttpsServer(tls, handler) : createHttpServer(handler)));
     const timer = setTimeout(() => settle({ error: new Error("Timed out waiting for the Oura callback (5 min).") }), CALLBACK_TIMEOUT_MS);
 
     rl.on("line", (line) => {
@@ -140,7 +144,7 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
 
     let listening = 0;
     servers.forEach((server, i) => {
-      const host = redirect.hosts[i];
+      const host = redirect.bind[i];
       // The IPv6 loopback is optional: if the machine has no ::1, carry on with 127.0.0.1 alone.
       server.on("error", (e) => { if (host === "::1") { server.close(); return; } settle({ error: e }); });
       server.listen(redirect.port, host, () => {
@@ -150,7 +154,7 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
         if (redirect.tls && !tls) {
           console.log("\nopenssl not found — the browser will fail to load the callback. Copy the full URL from the address bar and paste it here.");
         } else if (tls) {
-          console.log("\nThe callback uses a self-signed certificate for localhost. If the browser warns, choose Advanced → Proceed.");
+          console.log(`\nThe callback uses a self-signed certificate for ${redirect.hostname}. If the browser warns, choose Advanced → Proceed.`);
           console.log("If it refuses, copy the full URL from the address bar (it contains code=...) and paste it here, then press Enter.");
         }
         openBrowser(authUrl);
@@ -172,20 +176,22 @@ function openBrowser(url: string): void {
   try { spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(); } catch { /* user pastes the URL manually */ }
 }
 
-/** Self-signed certificate for the loopback callback (localhost, 127.0.0.1, ::1), generated once with openssl and kept 0600. */
-function selfSignedCert(): { key: Buffer; cert: Buffer } | null {
-  const { CERT_FILE, KEY_FILE } = paths;
+/** Self-signed certificate for the loopback callback, per hostname, generated once with openssl and kept 0600. */
+function selfSignedCert(hostname: string): { key: Buffer; cert: Buffer } | null {
+  const safe = hostname.replace(/[^a-z0-9.-]/gi, "_");
+  const certFile = join(CONFIG_DIR, `callback-${safe}-cert.pem`);
+  const keyFile = join(CONFIG_DIR, `callback-${safe}-key.pem`);
   try {
-    if (!existsSync(CERT_FILE) || !existsSync(KEY_FILE)) {
+    if (!existsSync(certFile) || !existsSync(keyFile)) {
       execFileSync("openssl", [
         "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
-        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1",
-        "-keyout", KEY_FILE, "-out", CERT_FILE,
+        "-subj", `/CN=${hostname}`, "-addext", `subjectAltName=DNS:${hostname},DNS:localhost,IP:127.0.0.1,IP:::1`,
+        "-keyout", keyFile, "-out", certFile,
       ], { stdio: "ignore", cwd: CONFIG_DIR });
-      chmodSync(KEY_FILE, 0o600);
-      chmodSync(CERT_FILE, 0o600);
+      chmodSync(keyFile, 0o600);
+      chmodSync(certFile, 0o600);
     }
-    return { key: readFileSync(KEY_FILE), cert: readFileSync(CERT_FILE) };
+    return { key: readFileSync(keyFile), cert: readFileSync(certFile) };
   } catch {
     return null;
   }
