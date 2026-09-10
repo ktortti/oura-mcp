@@ -4,7 +4,7 @@ import { ClientDeps, OuraClient, REFRESH_LOCK_TIMEOUT_MS } from "../src/client.j
 import { TOKEN_TIMEOUT_MS } from "../src/token.js";
 import type { AppConfig, Tokens } from "../src/config.js";
 
-const cfg: AppConfig = { client_id: "id", client_secret: "secret", redirect_uri: "https://127.0.0.1:3000/callback", scopes: "daily" };
+const cfg: AppConfig = { client_id: "id", client_secret: "secret", redirect_uri: "https://localhost:3000/callback", scopes: "daily" };
 const inOneHour = () => new Date(Date.now() + 3_600_000).toISOString();
 const expiredAt = () => new Date(Date.now() - 1000).toISOString();
 const live = (): Tokens => ({ access_token: "A1", refresh_token: "R1", expires_at: inOneHour() });
