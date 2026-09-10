@@ -98,3 +98,21 @@ test("isValidDate rejects impossible dates", () => {
   assert.equal(isValidDate("2026-02-30"), false);
   assert.equal(isValidDate("10-03-2026"), false);
 });
+
+test("chronotype with too few nights reports insufficient data instead of NaN clocks", () => {
+  const empty = chronotype([]);
+  assert.equal("insufficient_data" in empty && empty.insufficient_data, true);
+  const few = chronotype(Array.from({ length: 3 }, (_, i) => night(`2026-08-0${i + 1}`, `2026-08-0${i + 1}T01:00:00+03:00`, `2026-08-0${i + 1}T09:00:00+03:00`)));
+  assert.equal("insufficient_data" in few && few.insufficient_data, true);
+  assert.equal(few.nights, 3);
+});
+
+test("eventContext reports a null sleep delta when the night has no duration", () => {
+  const base = Array.from({ length: 10 }, (_, i) => night(`2026-06-${String(i + 1).padStart(2, "0")}`, `2026-06-${String(i + 1).padStart(2, "0")}T01:30:00+03:00`, `2026-06-${String(i + 1).padStart(2, "0")}T09:30:00+03:00`, { total_sleep_duration: 8 * 3600 }));
+  const noDuration = night("2026-03-10", "2026-03-10T01:47:00+02:00", "2026-03-10T08:23:00+02:00", { total_sleep_duration: null });
+  const r = eventContext("2026-03-10", "10:10", [noDuration], base, []);
+  if ("error" in r) throw new Error(r.error);
+  assert.equal(r.sleep_vs_30d_median_h, null);
+  assert.equal(r.night.asleep_h, null);
+  assert.equal(r.hours_awake_at_event, 1.78);
+});

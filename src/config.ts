@@ -69,4 +69,10 @@ export function filePermissions(): { config: string | null; tokens: string | nul
   return { config: perm(CONFIG_FILE), tokens: perm(TOKEN_FILE) };
 }
 
-export const paths = { CONFIG_FILE, TOKEN_FILE, CERT_FILE: join(CONFIG_DIR, "callback-cert.pem"), KEY_FILE: join(CONFIG_DIR, "callback-key.pem") };
+export const paths = {
+  CONFIG_FILE,
+  TOKEN_FILE,
+  LOCK_FILE: `${TOKEN_FILE}.lock`,
+  CERT_FILE: join(CONFIG_DIR, "callback-cert.pem"),
+  KEY_FILE: join(CONFIG_DIR, "callback-key.pem"),
+};

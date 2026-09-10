@@ -55,8 +55,14 @@ export function summariseNight(p: SleepPeriod, withCurve = false): NightSummary 
 
 // ---------------------------------------------------------------- chronotype
 
+export const MIN_NIGHTS_FOR_CHRONOTYPE = 7;
+
 export function chronotype(ps: SleepPeriod[]) {
-  const rows = mainSleeps(ps).map((p) => {
+  const nights = mainSleeps(ps);
+  if (nights.length < MIN_NIGHTS_FOR_CHRONOTYPE) {
+    return { nights: nights.length, insufficient_data: true as const, minimum_nights: MIN_NIGHTS_FOR_CHRONOTYPE };
+  }
+  const rows = nights.map((p) => {
     const bed = eveningHours(parseLocal(p.bedtime_start).hours);
     const dur = hoursBetween(p.bedtime_start, p.bedtime_end);
     return { day: p.day, bed, wake: bed + dur, mid: bed + dur / 2, dur, weekend: isWeekend(p.day) };
@@ -99,7 +105,7 @@ export function eventContext(date: string, eventTime: string, ps: SleepPeriod[],
   const eventEpochMs = new Date(`${date}T${eventTime}:00${wake.offset}`).getTime();
   const trough = lowestHrInstant(night);
   const baseNights = mainSleeps(baseline);
-  const baseSleepH = baseNights.map((p) => (p.total_sleep_duration ?? 0) / 3600).filter((x) => x > 0);
+  const baseSleepH = baseNights.map((p) => p.total_sleep_duration).filter((s): s is number => s != null && s > 0).map((s) => s / 3600);
   const baseWakeH = baseNights.map((p) => eveningHours(parseLocal(p.bedtime_end).hours));
   const day = readiness.find((r) => r.day === date);
 
@@ -108,7 +114,7 @@ export function eventContext(date: string, eventTime: string, ps: SleepPeriod[],
     night: summary,
     hours_awake_at_event: round((eventEpochMs - wake.epochMs) / 3_600_000),
     hours_since_hr_trough: trough ? round((eventEpochMs - trough.epochMs) / 3_600_000) : null,
-    sleep_vs_30d_median_h: baseSleepH.length ? round((summary.asleep_h ?? 0) - median(baseSleepH)) : null,
+    sleep_vs_30d_median_h: summary.asleep_h != null && baseSleepH.length ? round(summary.asleep_h - median(baseSleepH)) : null,
     wake_vs_30d_median_h: baseWakeH.length ? round(eveningHours(wake.hours) - median(baseWakeH)) : null,
     readiness_score: day?.score ?? null,
     temp_deviation: day?.temperature_deviation ?? summary.temp_deviation,

@@ -27,7 +27,7 @@ function assertRange(start: string, end: string, maxDays = MAX_RANGE_DAYS): void
 // ---------------------------------------------------------------- server
 
 function buildServer(): McpServer {
-  const server = new McpServer({ name: "oura-mcp-local", version: "0.2.0" });
+  const server = new McpServer({ name: "oura-mcp-local", version: "0.3.0" });
   let client: OuraClient | null = null;
   const oura = () => (client ??= OuraClient.load());
 

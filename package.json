@@ -1,6 +1,6 @@
 {
   "name": "oura-mcp-local",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Local, read-only MCP server for the Oura API v2. PKCE OAuth, tokens on disk with 0600, api.ouraring.com is the only host.",
   "type": "module",
