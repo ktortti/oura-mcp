@@ -7,7 +7,8 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 const TOKEN_FILE = join(CONFIG_DIR, "tokens.json");
 
 export const DEFAULT_SCOPES = "daily heartrate tag spo2 stress";
-export const DEFAULT_REDIRECT = "https://127.0.0.1:3000/callback";
+/** Oura's app form accepts `localhost` but not an IP literal, and requires https. */
+export const DEFAULT_REDIRECT = "https://localhost:3000/callback";
 
 export interface AppConfig {
   client_id: string;

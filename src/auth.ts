@@ -82,15 +82,17 @@ export async function runAuth(): Promise<void> {
   console.log(`Connected. Tokens saved to ${file} (0600). Scope: ${tokens.scope ?? cfg.scopes}. Expires: ${tokens.expires_at}`);
 }
 
-interface LoopbackRedirect { tls: boolean; port: number; path: string }
+interface LoopbackRedirect { tls: boolean; port: number; path: string; hosts: string[] }
 
 function parseLoopbackRedirect(uri: string): LoopbackRedirect {
   const u = new URL(uri);
   const loopback = ["127.0.0.1", "localhost"].includes(u.hostname);
   if (!["http:", "https:"].includes(u.protocol) || !loopback || !u.port) {
-    throw new Error("redirect_uri must be http(s)://127.0.0.1:<port>/<path>");
+    throw new Error("redirect_uri must be http(s)://localhost:<port>/<path> (or 127.0.0.1)");
   }
-  return { tls: u.protocol === "https:", port: Number(u.port), path: u.pathname || "/callback" };
+  // A browser resolving `localhost` may try ::1 before 127.0.0.1, so listen on both.
+  const hosts = u.hostname === "localhost" ? ["127.0.0.1", "::1"] : [u.hostname];
+  return { tls: u.protocol === "https:", port: Number(u.port), path: u.pathname || "/callback", hosts };
 }
 
 /**
@@ -107,12 +109,12 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
     const settle = (outcome: { code: string } | { error: Error }) => {
       clearTimeout(timer);
       rl.close();
-      server.close();
+      servers.forEach((s) => s.close());
       if ("code" in outcome) resolve(outcome.code); else reject(outcome.error);
     };
 
     const handler = (req: IncomingMessage, res: ServerResponse) => {
-      const url = new URL(req.url ?? "/", `http://127.0.0.1:${redirect.port}`);
+      const url = new URL(req.url ?? "/", `http://localhost:${redirect.port}`);
       if (url.pathname !== redirect.path) { res.writeHead(404).end("Not found"); return; }
       const error = url.searchParams.get("error");
       const code = url.searchParams.get("code");
@@ -127,7 +129,7 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
       settle({ code });
     };
 
-    const server = tls ? createHttpsServer(tls, handler) : createHttpServer(handler);
+    const servers = redirect.hosts.map(() => (tls ? createHttpsServer(tls, handler) : createHttpServer(handler)));
     const timer = setTimeout(() => settle({ error: new Error("Timed out waiting for the Oura callback (5 min).") }), CALLBACK_TIMEOUT_MS);
 
     rl.on("line", (line) => {
@@ -135,17 +137,24 @@ function waitForAuthCode(redirect: LoopbackRedirect, expectedState: string, auth
       if (pasted) settle({ code: pasted });
       else if (line.trim()) console.log("That doesn't look like the callback URL (need code= and a matching state=).");
     });
-    server.on("error", (e) => settle({ error: e }));
-    server.listen(redirect.port, "127.0.0.1", () => {
-      console.log("Opening the Oura consent page in your browser. If nothing opens, paste this URL into the browser:");
-      console.log(authUrl);
-      if (redirect.tls && !tls) {
-        console.log("\nopenssl not found — the browser will fail to load the callback. Copy the full URL from the address bar and paste it here.");
-      } else if (tls) {
-        console.log("\nThe callback uses a self-signed certificate for 127.0.0.1. If the browser warns, choose Advanced → Proceed.");
-        console.log("If it refuses, copy the full URL from the address bar (it contains code=...) and paste it here, then press Enter.");
-      }
-      openBrowser(authUrl);
+
+    let listening = 0;
+    servers.forEach((server, i) => {
+      const host = redirect.hosts[i];
+      // The IPv6 loopback is optional: if the machine has no ::1, carry on with 127.0.0.1 alone.
+      server.on("error", (e) => { if (host === "::1") { server.close(); return; } settle({ error: e }); });
+      server.listen(redirect.port, host, () => {
+        if (++listening !== 1) return;
+        console.log("Opening the Oura consent page in your browser. If nothing opens, paste this URL into the browser:");
+        console.log(authUrl);
+        if (redirect.tls && !tls) {
+          console.log("\nopenssl not found — the browser will fail to load the callback. Copy the full URL from the address bar and paste it here.");
+        } else if (tls) {
+          console.log("\nThe callback uses a self-signed certificate for localhost. If the browser warns, choose Advanced → Proceed.");
+          console.log("If it refuses, copy the full URL from the address bar (it contains code=...) and paste it here, then press Enter.");
+        }
+        openBrowser(authUrl);
+      });
     });
   });
 }
@@ -163,14 +172,14 @@ function openBrowser(url: string): void {
   try { spawn(cmd, args, { detached: true, stdio: "ignore" }).unref(); } catch { /* user pastes the URL manually */ }
 }
 
-/** Self-signed certificate for the loopback callback, generated once with openssl and kept 0600. */
+/** Self-signed certificate for the loopback callback (localhost, 127.0.0.1, ::1), generated once with openssl and kept 0600. */
 function selfSignedCert(): { key: Buffer; cert: Buffer } | null {
   const { CERT_FILE, KEY_FILE } = paths;
   try {
     if (!existsSync(CERT_FILE) || !existsSync(KEY_FILE)) {
       execFileSync("openssl", [
         "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",
-        "-subj", "/CN=127.0.0.1", "-addext", "subjectAltName=IP:127.0.0.1,DNS:localhost",
+        "-subj", "/CN=localhost", "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1",
         "-keyout", KEY_FILE, "-out", CERT_FILE,
       ], { stdio: "ignore", cwd: CONFIG_DIR });
       chmodSync(KEY_FILE, 0o600);
