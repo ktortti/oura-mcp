@@ -46,6 +46,14 @@ A small, read-only MCP server for the Oura API v2. It returns pre-shaped physiol
    Restart the app; `claude mcp list` should show `oura`.
 4. First query: `oura_event_context` for a recent date and a clock time. Check the bedtime, wake and lowest-HR time against the Oura app for the same night.
 
+## Archive (full-fidelity, local)
+
+```bash
+node dist/index.js archive ~/oura-data 2026-01-01 2026-12-31
+```
+
+Pulls every collection the token can read (sleep, daily sleep/readiness/activity/stress/SpO2/resilience, sleep_time, rest_mode_period, enhanced_tag) plus the daytime 5-minute heart-rate series, and writes `raw/<endpoint>.json` untouched alongside flattened CSVs: `nights.csv`, `sleep_hr_curves.csv` and `sleep_hrv_curves.csv` (one row per 5-minute sample per night), `heartrate.csv`, and one CSV per daily endpoint. The MCP tools remain the query layer; the archive is for keeping your own copy and for analysis outside a model's context.
+
 ## Notes
 
 - Oura refresh tokens are single-use. Several server processes (one per Claude Code session, say) can share the token file: refresh happens under a lock file (stale after 2 min and only if the owning process is gone), and a process re-reads the file before spending its own refresh token, so a sibling's refresh is adopted rather than raced.

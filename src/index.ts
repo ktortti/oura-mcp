@@ -12,6 +12,7 @@ import { addDays, daysBetween, isValidDate, parseLocal, todayLocal } from "./tim
 import { baselineDrift, buildDailyTable, chronotype, eventContext, mainSleeps, summariseNight, temperatureShifts } from "./analysis.js";
 import { writeCsvs } from "./export.js";
 import { tagDay } from "./schemas.js";
+import { archive } from "./archive.js";
 
 // ---------------------------------------------------------------- schemas
 
@@ -179,8 +180,18 @@ async function main(): Promise<void> {
     case "serve":
       await buildServer().connect(new StdioServerTransport());
       return;
+    case "archive": {
+      // node dist/index.js archive <dir> [since YYYY-MM-DD] [until YYYY-MM-DD]
+      const [, , , dir, since = addDays(todayLocal(), -730), until = todayLocal()] = process.argv;
+      if (!dir) { console.error("Usage: oura-mcp-local archive <dir> [since] [until]"); process.exit(2); }
+      if (!isValidDate(since) || !isValidDate(until)) { console.error("Dates must be YYYY-MM-DD"); process.exit(2); }
+      console.log(`Archiving ${since} → ${until} into ${dir}`);
+      const result = await archive(OuraClient.load(), { since, until, dir, log: console.log });
+      console.log(`Done: ${Object.values(result.counts).reduce((a, b) => a + b, 0)} records in ${tildeify(result.dir)}`);
+      return;
+    }
     default:
-      console.error("Usage: oura-mcp-local [init|auth|status|serve]");
+      console.error("Usage: oura-mcp-local [init|auth|status|serve|archive <dir> [since] [until]]");
       process.exit(2);
   }
 }

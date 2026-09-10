@@ -168,6 +168,29 @@ export class OuraClient {
     }
   }
 
+  // ---------------------------------------------------------------- raw archive access
+
+  /** Full, unmodified records for any collection endpoint — for archiving. Only the page envelope is validated. */
+  rawCollection(path: string, start: string, end: string): Promise<Record<string, unknown>[]> {
+    return this.getAll(path, z.record(z.unknown()), start, end);
+  }
+
+  /** Daytime 5-minute heart-rate series. Oura takes datetimes here, not dates. */
+  async rawHeartrate(startIso: string, endIso: string): Promise<Record<string, unknown>[]> {
+    const out: Record<string, unknown>[] = [];
+    const seen = new Set<string>();
+    let next: string | null | undefined;
+    for (let page = 1; ; page++) {
+      if (page > MAX_PAGES) throw new Error(`Oura heartrate: more than ${MAX_PAGES} pages for one range; narrow the dates.`);
+      const result = await this.getPage("heartrate", z.record(z.unknown()), { start_datetime: startIso, end_datetime: endIso, next_token: next ?? undefined });
+      out.push(...result.data);
+      next = result.next_token;
+      if (!next) return out;
+      if (seen.has(next)) throw new Error("Oura heartrate: pagination returned a repeated next_token.");
+      seen.add(next);
+    }
+  }
+
   // ---------------------------------------------------------------- endpoints
 
   sleep(start: string, end: string) { return this.getAll("sleep", SleepPeriodSchema, start, end); }
