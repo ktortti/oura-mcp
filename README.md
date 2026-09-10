@@ -49,6 +49,7 @@ A small, read-only MCP server for the Oura API v2. It returns pre-shaped physiol
 
 - Oura refresh tokens are single-use. Several server processes (one per Claude Code session, say) can share the token file: refresh happens under a lock file (stale after 2 min and only if the owning process is gone), and a process re-reads the file before spending its own refresh token, so a sibling's refresh is adopted rather than raced.
 - Access tokens are refreshed automatically a minute before expiry and on a 401. Requests retry up to three times on 429 (honouring `Retry-After`), 5xx and network errors, with at most four in flight at once. Pagination is capped at 50 pages and rejects a repeated token.
+- `oura_export` only writes under your home directory: lexical check, realpath of the existing ancestor before anything is created, realpath again after, and `O_NOFOLLOW` on each file open. This is best-effort containment for local use — it defeats mistakes and pre-existing symlinks, not a hostile process on the same machine racing the checks.
 - Responses are validated against minimal zod schemas per endpoint; an unexpected shape fails with the endpoint and field named rather than producing misleading numbers.
 - To revoke: delete `~/.oura-mcp-local/tokens.json` and remove the app's access at cloud.ouraring.com.
 - Set `OURA_MCP_HOME` to relocate the config directory (tests and sandboxes).

@@ -30,6 +30,10 @@ function existingAncestor(p: string): string {
  * anything outside it either: the lexical check runs first, then the nearest existing ancestor
  * is realpath'd (so a symlink already on the path can't point out) before mkdir, and the final
  * directory is realpath'd again after.
+ *
+ * Boundary: this is best-effort containment for a local, user-run tool. It defeats mistakes and
+ * pre-existing symlinks; it does not defend against another principal on the same machine
+ * mutating the path between these checks and the write.
  */
 export function resolveExportDir(dir: string, home = homedir()): string {
   const target = resolve(dir.replace(/^~(?=$|\/)/, home));
