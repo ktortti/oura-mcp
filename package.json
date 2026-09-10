@@ -1,15 +1,21 @@
 {
   "name": "oura-mcp-local",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Local, read-only MCP server for the Oura API v2. PKCE OAuth, tokens on disk with 0600, api.ouraring.com is the only host.",
   "type": "module",
-  "bin": { "oura-mcp-local": "./dist/index.js" },
-  "engines": { "node": ">=18" },
+  "bin": {
+    "oura-mcp-local": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json && chmod +x dist/index.js",
     "test": "node --test --import tsx tests/*.test.ts",
-    "serve": "node dist/index.js serve"
+    "serve": "node dist/index.js serve",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
@@ -18,6 +24,9 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "typescript-eslint": "^8.0.0"
   }
 }

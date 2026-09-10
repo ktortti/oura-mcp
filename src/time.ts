@@ -48,10 +48,24 @@ export function fmtHours(h: number): string {
   return `${String(H).padStart(2, "0")}:${String(M).padStart(2, "0")}`;
 }
 
+/** Format an absolute instant as "YYYY-MM-DD HH:MM" in the given fixed offset (e.g. "+03:00"). */
+export function formatInOffset(epochMs: number, offset: string): string {
+  const m = offset.match(/^([+-])(\d{2}):(\d{2})$/);
+  const offsetMin = m ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3])) : 0;
+  return new Date(epochMs + offsetMin * 60_000).toISOString().slice(0, 16).replace("T", " ");
+}
+
 export function addDays(date: string, n: number): string {
   const d = new Date(`${date}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
+}
+
+/** True for a real calendar date in YYYY-MM-DD form (rejects 2026-13-45 and 2026-02-30). */
+export function isValidDate(s: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
+  const d = new Date(`${s}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
 }
 
 export function todayLocal(): string {

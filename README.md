@@ -51,4 +51,4 @@ A small, read-only MCP server for the Oura API v2. It returns pre-shaped physiol
 - Access tokens are refreshed automatically a minute before expiry and on any 401.
 - To revoke: delete `~/.oura-mcp-local/tokens.json` and remove the app's access at cloud.ouraring.com.
 - Set `OURA_MCP_HOME` to relocate the config directory (tests and sandboxes).
-- `npm test` runs the analysis functions against synthetic data.
+- `npm test` covers the analysis functions (synthetic data) and the API client (scripted `fetch`: pagination, 401 → refresh → retry, single shared refresh under concurrency). `npm run lint` and `npm run typecheck` are what CI runs.
