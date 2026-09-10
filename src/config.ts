@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync, chmodSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, join, sep } from "node:path";
 
 export const CONFIG_DIR = process.env.OURA_MCP_HOME ?? join(homedir(), ".oura-mcp-local");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
@@ -64,9 +64,31 @@ export function saveTokens(t: Tokens): string {
   return TOKEN_FILE;
 }
 
+export interface FileStatus { exists: boolean; mode: string | null; secure: boolean | null }
+
+function fileStatus(p: string): FileStatus {
+  if (!existsSync(p)) return { exists: false, mode: null, secure: null };
+  const mode = statSync(p).mode & 0o777;
+  return { exists: true, mode: mode.toString(8), secure: process.platform === "win32" ? true : (mode & 0o077) === 0 };
+}
+
+/** Full paths for the CLI, which prints to the user's own terminal. */
 export function filePermissions(): { config: string | null; tokens: string | null } {
-  const perm = (p: string) => (existsSync(p) ? (statSync(p).mode & 0o777).toString(8) : null);
-  return { config: perm(CONFIG_FILE), tokens: perm(TOKEN_FILE) };
+  return { config: fileStatus(CONFIG_FILE).mode, tokens: fileStatus(TOKEN_FILE).mode };
+}
+
+/** Replace the home directory with ~; a path outside home is reduced to its basename. */
+export function tildeify(p: string, home = homedir()): string {
+  if (p === home) return "~";
+  return p.startsWith(home + sep) ? `~${p.slice(home.length)}` : basename(p);
+}
+
+/**
+ * What an MCP caller may know about local files: where (relative to ~), whether they exist,
+ * and whether their permissions are private. Never absolute paths — those carry the OS username.
+ */
+export function statusForCaller(): { dir: string; config: FileStatus; tokens: FileStatus } {
+  return { dir: tildeify(CONFIG_DIR), config: fileStatus(CONFIG_FILE), tokens: fileStatus(TOKEN_FILE) };
 }
 
 export const paths = {

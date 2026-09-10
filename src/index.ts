@@ -7,7 +7,7 @@ import type { ShapeOutput, ZodRawShapeCompat } from "@modelcontextprotocol/sdk/s
 import { z } from "zod";
 import { runAuth, runInit } from "./auth.js";
 import { MAX_RANGE_DAYS, OuraClient } from "./client.js";
-import { filePermissions, loadConfig, loadTokens, paths } from "./config.js";
+import { filePermissions, loadConfig, loadTokens, paths, statusForCaller, tildeify } from "./config.js";
 import { addDays, daysBetween, isValidDate, parseLocal, todayLocal } from "./time.js";
 import { baselineDrift, buildDailyTable, chronotype, eventContext, mainSleeps, summariseNight, temperatureShifts } from "./analysis.js";
 import { writeCsvs } from "./export.js";
@@ -48,14 +48,14 @@ function buildServer(): McpServer {
   }
 
   tool("oura_status",
-    "Connection status: token expiry, granted scopes, config file permissions. Returns no health data.",
+    "Connection status: token expiry, granted scopes, whether the local config and token files exist and are private. Returns no health data and no absolute paths.",
     {},
     async () => {
       const cfg = loadConfig(), tokens = loadTokens();
       return {
         configured: !!cfg, authorised: !!tokens,
         scopes: tokens?.scope ?? cfg?.scopes ?? null, token_expires_at: tokens?.expires_at ?? null,
-        files: { ...paths, permissions: filePermissions() }, host: "api.ouraring.com",
+        files: statusForCaller(), host: "api.ouraring.com",
       };
     });
 
@@ -153,7 +153,7 @@ function buildServer(): McpServer {
         temperature: readiness.map((r) => ({ day: r.day, temp_deviation: r.temperature_deviation, temp_trend_deviation: r.temperature_trend_deviation })),
         tags: tags.map((t) => ({ day: tagDay(t), end_day: t.end_day ?? null, tag: t.tag_type_code ?? t.custom_name, comment: t.comment })),
       };
-      const written = writeCsvs(dir, files);
+      const written = writeCsvs(dir, files).map((p) => tildeify(p));
       return { written, rows: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v.length])) };
     });
 
