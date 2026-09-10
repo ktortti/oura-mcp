@@ -1,6 +1,8 @@
 import type { AppConfig, Tokens } from "./config.js";
 
 export const TOKEN_URL = "https://api.ouraring.com/oauth/token";
+/** Upper bound on one token-endpoint call. Anything that waits on a refresh must allow for at least this. */
+export const TOKEN_TIMEOUT_MS = 30_000;
 
 export type FetchLike = (input: string | URL, init?: RequestInit) => Promise<Response>;
 
@@ -23,7 +25,7 @@ export async function exchangeToken(
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams({ ...body, client_id: cfg.client_id, client_secret: cfg.client_secret }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(TOKEN_TIMEOUT_MS),
   });
   if (!res.ok) throw new Error(`Token endpoint ${res.status}: ${(await res.text()).slice(0, 300)}`);
   const j = (await res.json()) as TokenResponse;

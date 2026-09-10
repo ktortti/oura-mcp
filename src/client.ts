@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { AppConfig, Tokens, loadConfig, loadTokens, paths, saveTokens } from "./config.js";
 import { withFileLock } from "./lock.js";
-import { FetchLike, exchangeToken } from "./token.js";
+import { FetchLike, TOKEN_TIMEOUT_MS, exchangeToken } from "./token.js";
 import {
   DailyActivitySchema, DailyReadinessSchema, DailySleepSchema, DailySpo2Schema, DailyStressSchema,
   EnhancedTagSchema, SleepPeriodSchema, pageOf,
@@ -16,6 +16,11 @@ const REFRESH_LEEWAY_MS = 60_000;
 const REQUEST_TIMEOUT_MS = 30_000;
 const RETRY = { attempts: 3, baseMs: 500, maxMs: 10_000 };
 const MAX_CONCURRENT = 4;
+/**
+ * How long a process waits for a sibling's refresh before giving up. A healthy refresh can take
+ * the full token-endpoint timeout, so this must be comfortably longer than that.
+ */
+export const REFRESH_LOCK_TIMEOUT_MS = 2 * TOKEN_TIMEOUT_MS;
 
 export interface ClientDeps {
   fetch?: FetchLike;
@@ -48,7 +53,7 @@ export class OuraClient {
     this.wait = deps.wait ?? defaultWait;
     this.persist = deps.persistTokens ?? saveTokens;
     this.reload = deps.reloadTokens ?? loadTokens;
-    this.lock = deps.lock ?? ((fn) => withFileLock(paths.LOCK_FILE, fn));
+    this.lock = deps.lock ?? ((fn) => withFileLock(paths.LOCK_FILE, fn, { timeoutMs: REFRESH_LOCK_TIMEOUT_MS }));
     this.gate = new Semaphore(deps.maxConcurrent ?? MAX_CONCURRENT);
   }
 

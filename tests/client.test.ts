@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ClientDeps, OuraClient } from "../src/client.js";
+import { ClientDeps, OuraClient, REFRESH_LOCK_TIMEOUT_MS } from "../src/client.js";
+import { TOKEN_TIMEOUT_MS } from "../src/token.js";
 import type { AppConfig, Tokens } from "../src/config.js";
 
 const cfg: AppConfig = { client_id: "id", client_secret: "secret", redirect_uri: "https://127.0.0.1:3000/callback", scopes: "daily" };
@@ -205,4 +206,8 @@ test("if Oura rejects the refresh token and nothing newer exists, the error says
   const f = fakeFetch([() => new Response('{"error":"invalid_grant"}', { status: 400 })]);
   const c = new OuraClient(cfg, { access_token: "A1", refresh_token: "R1", expires_at: expiredAt() }, deps(f.impl));
   await assert.rejects(c.dailySleep("2026-03-01", "2026-03-01"), /rejected the refresh token.*Run: node dist\/index\.js auth/);
+});
+
+test("a process waits for a sibling's refresh at least as long as a refresh can take", () => {
+  assert.ok(REFRESH_LOCK_TIMEOUT_MS >= 2 * TOKEN_TIMEOUT_MS, `${REFRESH_LOCK_TIMEOUT_MS} < 2 × ${TOKEN_TIMEOUT_MS}`);
 });
