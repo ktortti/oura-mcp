@@ -40,11 +40,14 @@ export const DailySpo2Schema = z.object({
   spo2_percentage: z.object({ average: num }).nullable().optional(),
 });
 
+/** Per the v2 spec an enhanced tag carries start_day (required) and end_day; `day` is tolerated for older payloads. */
 export const EnhancedTagSchema = z.object({
   id: z.string(),
-  day: z.string(),
+  start_day: str, end_day: str, day: str,
   start_time: str, end_time: str, tag_type_code: str, comment: str, custom_name: str,
-});
+}).refine((t) => t.start_day || t.day || t.end_day, { message: "tag has no start_day, day or end_day" });
+
+export const tagDay = (t: { day?: string | null; start_day?: string | null; end_day?: string | null }) => (t.day ?? t.start_day ?? t.end_day) as string;
 
 export const pageOf = <T extends z.ZodTypeAny>(item: T) =>
   z.object({ data: z.array(item), next_token: z.string().nullable().optional() });

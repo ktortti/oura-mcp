@@ -11,6 +11,7 @@ import { filePermissions, loadConfig, loadTokens, paths } from "./config.js";
 import { addDays, daysBetween, isValidDate, parseLocal, todayLocal } from "./time.js";
 import { baselineDrift, buildDailyTable, chronotype, eventContext, mainSleeps, summariseNight, temperatureShifts } from "./analysis.js";
 import { writeCsvs } from "./export.js";
+import { tagDay } from "./schemas.js";
 
 // ---------------------------------------------------------------- schemas
 
@@ -121,7 +122,8 @@ function buildServer(): McpServer {
     async ({ start, end }) => {
       assertRange(start, end);
       return (await oura().tags(start, end)).map((t) => ({
-        day: t.day, tag: t.tag_type_code ?? t.custom_name,
+        day: tagDay(t), end_day: t.end_day && t.end_day !== tagDay(t) ? t.end_day : null,
+        tag: t.tag_type_code ?? t.custom_name,
         start: t.start_time ? parseLocal(t.start_time).hhmm : null, end: t.end_time ? parseLocal(t.end_time).hhmm : null,
         comment: t.comment,
       }));
@@ -149,7 +151,7 @@ function buildServer(): McpServer {
         sleep: mainSleeps(sleep).map((p) => ({ ...summariseNight(p) })),
         daily: buildDailyTable({ readiness, sleepScores, activity }),
         temperature: readiness.map((r) => ({ day: r.day, temp_deviation: r.temperature_deviation, temp_trend_deviation: r.temperature_trend_deviation })),
-        tags: tags.map((t) => ({ day: t.day, tag: t.tag_type_code ?? t.custom_name, comment: t.comment })),
+        tags: tags.map((t) => ({ day: tagDay(t), end_day: t.end_day ?? null, tag: t.tag_type_code ?? t.custom_name, comment: t.comment })),
       };
       const written = writeCsvs(dir, files);
       return { written, rows: Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v.length])) };

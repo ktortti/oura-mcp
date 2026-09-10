@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { withFileLock } from "../src/lock.js";
@@ -20,13 +20,33 @@ test("critical sections under the same lock do not overlap", async () => {
   assert.equal(existsSync(p), false, "lock released");
 });
 
-test("an abandoned lock older than staleMs is taken over", async () => {
+const backdate = (p: string, ms: number) => { const t = new Date(Date.now() - ms); utimesSync(p, t, t); };
+
+test("an old lock whose owner process is gone is taken over", async () => {
   const p = lockPath();
-  writeFileSync(p, "dead-pid");
-  const old = new Date(Date.now() - 120_000);
-  utimesSync(p, old, old);
-  const result = await withFileLock(p, async () => "ran", { staleMs: 30_000 });
+  writeFileSync(p, "999999999:dead");
+  backdate(p, 300_000);
+  const result = await withFileLock(p, async () => "ran", { staleMs: 120_000 });
   assert.equal(result, "ran");
+  assert.equal(existsSync(p), false);
+});
+
+test("an old lock whose owner process is still alive is never taken over", async () => {
+  const p = lockPath();
+  writeFileSync(p, `${process.pid}:live`);
+  backdate(p, 300_000);
+  await assert.rejects(withFileLock(p, async () => "never", { staleMs: 10, timeoutMs: 100, wait: (ms) => new Promise((r) => setTimeout(r, ms / 10)) }), /Timed out/);
+  assert.equal(existsSync(p), true, "lock left in place");
+});
+
+test("the lock file records an owner and only the owner removes it", async () => {
+  const p = lockPath();
+  await withFileLock(p, async () => {
+    const content = readFileSync(p, "utf8");
+    assert.match(content, new RegExp(`^${process.pid}:[0-9a-f-]{36}$`));
+    writeFileSync(p, "someone-else:x"); // simulate a takeover mid-section
+  });
+  assert.equal(existsSync(p), true, "a lock now owned by someone else is not unlinked");
 });
 
 test("a live lock that never releases times out with a clear error", async () => {

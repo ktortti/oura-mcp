@@ -65,6 +65,23 @@ test("a malformed response fails with the endpoint and field named", async () =>
   await assert.rejects(new OuraClient(cfg, live(), deps(f.impl)).sleep("2026-03-01", "2026-03-01"), /Oura sleep: unexpected response shape at data\.0\.bedtime_end/);
 });
 
+test("enhanced tags use the spec's start_day/end_day, with day tolerated", async () => {
+  const f = fakeFetch([() => json({ data: [
+    { id: "t1", start_day: "2026-03-01", end_day: "2026-03-02", start_time: "2026-03-01T22:00:00+02:00", end_time: null, tag_type_code: "tag_generic_travel", comment: null, custom_name: null },
+    { id: "t2", start_day: "2026-03-03", end_day: null, start_time: "2026-03-03T09:00:00+02:00", end_time: null, tag_type_code: null, comment: "note", custom_name: "Sauna" },
+  ] })]);
+  const rows = await new OuraClient(cfg, live(), deps(f.impl)).tags("2026-03-01", "2026-03-03");
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].start_day, "2026-03-01");
+  assert.equal(rows[0].end_day, "2026-03-02");
+  assert.equal(rows[1].custom_name, "Sauna");
+});
+
+test("a tag with none of day/start_day/end_day is rejected", async () => {
+  const f = fakeFetch([() => json({ data: [{ id: "t1", start_time: "2026-03-01T22:00:00+02:00" }] })]);
+  await assert.rejects(new OuraClient(cfg, live(), deps(f.impl)).tags("2026-03-01", "2026-03-03"), /enhanced_tag: unexpected response shape/);
+});
+
 test("unknown fields are stripped, optional fields may be absent", async () => {
   const f = fakeFetch([() => json({ data: [{ day: "2026-03-01", score: null, temperature_deviation: 0.1, temperature_trend_deviation: null, brand_new_field: 1 }] })]);
   const rows = await new OuraClient(cfg, live(), deps(f.impl)).dailyReadiness("2026-03-01", "2026-03-01");
